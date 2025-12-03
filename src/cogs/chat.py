@@ -142,13 +142,23 @@ class Chat(commands.Cog):
                     tools=TOOLS_SCHEMA
                 )
                 
-                # Handle tool calls
-                if response.tool_calls:
-                    # For tool calls, we need to do a follow-up with the tool results
-                    # Build the tool execution context
-                    tool_results = []
+                # Handle tool calls with multi-round support
+                # The LLM may return tool calls that, when executed, lead to more tool calls
+                # We loop until we get a final text response (max 5 rounds to prevent infinite loops)
+                max_tool_rounds = 5
+                tool_round = 0
+                all_tool_calls = []  # Track all tool calls for building message history
+                all_tool_results = []  # Track all results
+                
+                while response.tool_calls and tool_round < max_tool_rounds:
+                    tool_round += 1
+                    logger.debug(f"Tool round {tool_round}: processing {len(response.tool_calls)} tool calls")
                     
-                    for tool_call in response.tool_calls:
+                    # Execute all tool calls in this round
+                    current_tool_calls = response.tool_calls
+                    current_tool_results = []
+                    
+                    for tool_call in current_tool_calls:
                         function_name = tool_call["function"]["name"]
                         try:
                             arguments = json.loads(tool_call["function"]["arguments"])
@@ -162,23 +172,31 @@ class Chat(commands.Cog):
                             context={"guild_id": guild_id, "user_id": user_id}
                         )
                         
-                        tool_results.append({
+                        current_tool_results.append({
                             "tool_call_id": tool_call["id"],
                             "name": function_name,
                             "result": tool_result
                         })
                     
-                    # Second LLM call with tool results - use the raw API for this
+                    # Accumulate for history
+                    all_tool_calls.append(current_tool_calls)
+                    all_tool_results.append(current_tool_results)
+                    
+                    # Send tool results back to LLM
                     response = await self.llm.chat_with_tool_results(
                         user_message=content,
-                        assistant_tool_calls=response.tool_calls,
-                        tool_results=tool_results,
+                        assistant_tool_calls=current_tool_calls,
+                        tool_results=current_tool_results,
                         user_memories=memories,
                         user_name=user_name,
                         custom_instructions=custom_instructions,
                         conversation_context=history if history else None,
                         tools=TOOLS_SCHEMA
                     )
+                
+                if tool_round >= max_tool_rounds and response.tool_calls:
+                    logger.warning(f"Hit max tool rounds ({max_tool_rounds}), forcing response")
+                    response.content = "I tried to complete your request but it required too many steps. Please try breaking it into smaller requests."
                 
                 # Save the conversation to history
                 await self.db.add_message(user_id, guild_id, channel_id, "user", content)

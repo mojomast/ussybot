@@ -31,6 +31,27 @@ BRRR Bot is a Discord bot that goes **BRRRRRRRR** — fast, efficient, and high-
 
 ---
 
+## Refactor & Improvements (Dec 3, 2025) ✅
+
+This release consolidates the bot's system prompts and tool schemas into centralized files and adds several enhancements to tool handling and management, improving maintainability and user experience.
+
+Highlights:
+
+- System prompts are now in `src/prompts.py` for easy customization and future per-guild overrides.
+- Tool schemas are moved to `src/tool_schemas.py`. This makes adding and documenting tools simpler.
+- New tools available: `create_project`, `get_project_info`, `archive_project`, `get_tasks`, `toggle_task`, `delete_task`, `get_ideas`, and `delete_idea`.
+- `create_project` tool enables the bot to create a new project before adding tasks instead of assuming a project exists.
+- The Chat handler (`src/cogs/chat.py`) now supports multi-round tool calling, allowing the LLM to call tools recursively (e.g., create project → add tasks in the same user request).
+- The LLM client (`src/llm.py`) now delegates prompt construction to `src/prompts.py`, and the generator functions (`generate_project_plan`, `generate_retro_summary`) use the centralized prompts.
+- Tool execution logic is centralized in `src/tools.py` via `ToolExecutor`.
+
+Testing and future work:
+
+- Tests for prompt building and tool schema formats were updated and pass. Some integration tests require additional context fixtures and may be updated in a follow-up.
+- Consider adding per-guild system prompt customization and more tool actions like toggling task ownership and role-based execution logic.
+
+---
+
 ## How It Works
 
 ### Architecture Overview

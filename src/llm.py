@@ -1,5 +1,4 @@
-"""
-BRRR Bot - LLM Integration via Requesty.ai
+"""BRRR Bot - LLM Integration via Requesty.ai
 Uses OpenAI-compatible API for inference
 """
 
@@ -9,6 +8,14 @@ import json
 import logging
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
+
+from src.prompts import (
+    build_chat_system_prompt,
+    build_project_planning_prompt,
+    build_retro_summary_prompt,
+    PROJECT_PLANNING_SYSTEM_PROMPT,
+    RETRO_SUMMARY_SYSTEM_PROMPT,
+)
 
 logger = logging.getLogger('brrr.llm')
 logger.setLevel(logging.DEBUG)
@@ -139,103 +146,17 @@ class LLMClient:
         custom_instructions: str = None,
         conversation_context: List[Dict[str, str]] = None
     ) -> str:
-        """Build the system prompt with user memories, custom instructions, and conversation context"""
+        """Build the system prompt with user memories, custom instructions, and conversation context.
         
-        memory_context = ""
-        if user_memories:
-            memory_lines = []
-            for key, data in user_memories.items():
-                # Skip persona key - it's handled separately
-                if key == "persona_instructions":
-                    continue
-                if isinstance(data, dict):
-                    memory_lines.append(f"- {key}: {data.get('value', data)}")
-                else:
-                    memory_lines.append(f"- {key}: {data}")
-            if memory_lines:
-                memory_context = f"\n\n**What I remember about {user_name}:**\n" + "\n".join(memory_lines)
-        
-        # Build custom instructions section
-        custom_section = ""
-        if custom_instructions:
-            custom_section = f"""
-
-**User's Custom Instructions (IMPORTANT - follow these closely):**
-{custom_instructions}
-"""
-        
-        # Build recent conversation context section
-        context_section = ""
-        if conversation_context:
-            context_lines = []
-            for msg in conversation_context:
-                role = msg.get('role', 'unknown')
-                content = msg.get('content', '')
-                if role == 'user':
-                    context_lines.append(f"{user_name}: {content}")
-                elif role == 'assistant':
-                    context_lines.append(f"You (BRRR Bot): {content}")
-            if context_lines:
-                context_section = f"""
-
-**Recent conversation context (for reference only - respond to the NEW message below, not these):**
-{chr(10).join(context_lines)}
-"""
-        
-        return f"""You are BRRR Bot, an energetic and helpful assistant for the BRRR Discord server focused on weekly coding projects.
-
-**Your personality:**
-- You go brrrrrrrrr (fast, efficient, high-energy)
-- You're enthusiastic about coding projects and helping people build cool stuff
-- You keep responses concise but helpful
-- You use occasional "brrr" sounds when excited
-- You're supportive and encourage people to ship their projects
-
-**Your capabilities:**
-- Help plan and manage weekly coding projects
-- Answer coding questions
-- Remember things about users to personalize interactions
-- Provide encouragement and motivation
-
-**Discord commands & features (very important):**
-- You are a Discord bot with many slash commands. When users ask what you can do, how you help, or whether you have commands, you MUST mention these explicitly and suggest using `/help` for details.
-- Global utility commands:
-  - `/ping`  latency check.
-  - `/brrr`  bot status (LLM, guilds, active projects).
-  - `/help`  overview of all commands.
-- Project workflow (`/project` group):
-  - `/project start`  start a new project (modal).
-  - `/project status` / `/project info` / `/project archive`.
-  - `/project checklist add|list|toggle|remove`  manage project tasks.
-- Weekly workflow (`/week` group):
-  - `/week start`  weekly overview.
-  - `/week retro`  run retrospectives (uses the LLM when available).
-  - `/week summary`  quick project stats.
-- Idea workflow (`/idea` group):
-  - `/idea add`, `/idea quick`, `/idea list`, `/idea pick`, `/idea random`, `/idea delete`.
-- Memory & persona (`/memory` and `/persona` groups):
-  - `/memory show|add|forget|clear` to inspect and adjust what you remember.
-  - `/persona set|preset|show|clear` to customize how you respond to each user.
-- Direct chat:
-  - Users can @mention you in a channel, reply to your messages, or use `/chat` for a direct LLM response.
-
-When a user seems to need structured help (projects, weeks, ideas, memories, persona), gently point them to the relevant slash commands as well as answering conversationally.
-{custom_section}
-**Memory System:**
-You can remember things about users. When you learn something worth remembering about a user (their preferences, skills, current projects, interests, timezone, etc.), you should include it in your response using this JSON format at the END of your message:
-
-```json
-{{"memories": [{{"key": "skill_python", "value": "advanced", "context": "mentioned they've been coding Python for 5 years"}}]}}
-```
-
-Memory keys should be descriptive like: current_project, skill_<language>, interest_<topic>, timezone, preferred_name, etc.
-Only save memories that would be useful for future interactions. Don't save trivial or temporary information.
-{memory_context}
-{context_section}
-**Current context:**
-You're chatting with {user_name}. Respond to their NEW message below.
-
-Remember: You're here to help make weekly projects go BRRRRR! 🚀"""
+        Delegates to src/prompts.py for the actual prompt construction.
+        Edit src/prompts.py to customize the bot's personality and behavior.
+        """
+        return build_chat_system_prompt(
+            user_memories=user_memories,
+            user_name=user_name,
+            custom_instructions=custom_instructions,
+            conversation_context=conversation_context
+        )
 
     async def chat(
         self,
@@ -501,24 +422,20 @@ Remember: You're here to help make weekly projects go BRRRRR! 🚀"""
         project_description: str,
         user_context: str = ""
     ) -> str:
-        """Generate a project plan/checklist"""
+        """Generate a project plan/checklist.
         
-        prompt = f"""Generate a concise project checklist for:
-
-**Project:** {project_title}
-**Description:** {project_description}
-{f"**Context:** {user_context}" if user_context else ""}
-
-Create 5-10 actionable tasks that break down this project into manageable steps.
-Format each task as a simple one-line item.
-Focus on the most important tasks to ship an MVP.
-
-Respond with ONLY the task list, one task per line, no numbering or bullets."""
+        Uses prompts from src/prompts.py - edit there to customize.
+        """
+        prompt = build_project_planning_prompt(
+            project_title=project_title,
+            project_description=project_description,
+            user_context=user_context
+        )
 
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": "You are a project planning assistant. Be concise and practical."},
+                {"role": "system", "content": PROJECT_PLANNING_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.5,
@@ -529,25 +446,23 @@ Respond with ONLY the task list, one task per line, no numbering or bullets."""
         return data["choices"][0]["message"]["content"]
     
     async def generate_retro_summary(self, project_title: str, tasks: List[Dict]) -> str:
-        """Generate a retrospective summary"""
+        """Generate a retrospective summary.
         
+        Uses prompts from src/prompts.py - edit there to customize.
+        """
         completed = [t for t in tasks if t.get('is_done')]
         incomplete = [t for t in tasks if not t.get('is_done')]
         
-        prompt = f"""Generate a brief retro summary for this week's project:
-
-**Project:** {project_title}
-**Completed tasks:** {len(completed)}/{len(tasks)}
-**Done:** {', '.join(t['label'] for t in completed) if completed else 'None'}
-**Not done:** {', '.join(t['label'] for t in incomplete) if incomplete else 'All done!'}
-
-Write a 2-3 sentence summary celebrating wins and noting what to carry forward.
-Be encouraging and positive!"""
+        prompt = build_retro_summary_prompt(
+            project_title=project_title,
+            completed_tasks=completed,
+            incomplete_tasks=incomplete
+        )
 
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": "You are BRRR Bot, celebrating weekly project progress. Be enthusiastic!"},
+                {"role": "system", "content": RETRO_SUMMARY_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.7,
