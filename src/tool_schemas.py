@@ -248,6 +248,324 @@ DELETE_IDEA_SCHEMA = {
 
 
 # =============================================================================
+# TASK ASSIGNMENT TOOLS
+# =============================================================================
+
+ASSIGN_TASK_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "assign_task",
+        "description": "Assign a task to a specific user.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "integer",
+                    "description": "The ID of the task to assign"
+                },
+                "user_id": {
+                    "type": "string",
+                    "description": "The Discord user ID to assign the task to"
+                }
+            },
+            "required": ["task_id", "user_id"]
+        }
+    }
+}
+
+UNASSIGN_TASK_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "unassign_task",
+        "description": "Remove the assignment from a task (unassign from any user).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "integer",
+                    "description": "The ID of the task to unassign"
+                }
+            },
+            "required": ["task_id"]
+        }
+    }
+}
+
+GET_USER_TASKS_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "get_user_tasks",
+        "description": "Get all tasks assigned to a specific user in the current guild.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "user_id": {
+                    "type": "string",
+                    "description": "The Discord user ID to get tasks for"
+                },
+                "include_done": {
+                    "type": "boolean",
+                    "description": "Whether to include completed tasks (default: false)"
+                }
+            },
+            "required": ["user_id"]
+        }
+    }
+}
+
+
+# =============================================================================
+# NOTES TOOLS
+# =============================================================================
+
+ADD_PROJECT_NOTE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "add_project_note",
+        "description": "Add a note to a project for tracking updates, decisions, or general information.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "integer",
+                    "description": "The ID of the project to add the note to"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The content of the note"
+                }
+            },
+            "required": ["project_id", "content"]
+        }
+    }
+}
+
+GET_PROJECT_NOTES_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "get_project_notes",
+        "description": "Get all notes for a specific project.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "integer",
+                    "description": "The ID of the project to get notes for"
+                }
+            },
+            "required": ["project_id"]
+        }
+    }
+}
+
+ADD_TASK_NOTE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "add_task_note",
+        "description": "Add a note to a task for tracking progress, blockers, or additional context.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "integer",
+                    "description": "The ID of the task to add the note to"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The content of the note"
+                }
+            },
+            "required": ["task_id", "content"]
+        }
+    }
+}
+
+GET_TASK_NOTES_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "get_task_notes",
+        "description": "Get all notes for a specific task.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "integer",
+                    "description": "The ID of the task to get notes for"
+                }
+            },
+            "required": ["task_id"]
+        }
+    }
+}
+
+
+# =============================================================================
+# GITHUB INTEGRATION TOOLS
+# =============================================================================
+
+GITHUB_LIST_FILES_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "github_list_files",
+        "description": "List files in a GitHub repository at a specific path.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository in format 'owner/repo'"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Path within the repository (default: root)"
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "Branch name (default: main branch)"
+                }
+            },
+            "required": ["repo"]
+        }
+    }
+}
+
+GITHUB_READ_FILE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "github_read_file",
+        "description": "Read the contents of a file from a GitHub repository.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository in format 'owner/repo'"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file in the repository"
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "Branch name (default: main branch)"
+                }
+            },
+            "required": ["repo", "path"]
+        }
+    }
+}
+
+GITHUB_CREATE_PR_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "github_create_pr",
+        "description": "Create a pull request in a GitHub repository.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository in format 'owner/repo'"
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Title of the pull request"
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Description of the pull request"
+                },
+                "head": {
+                    "type": "string",
+                    "description": "The name of the branch where changes are implemented"
+                },
+                "base": {
+                    "type": "string",
+                    "description": "The name of the branch to merge into (default: main)"
+                }
+            },
+            "required": ["repo", "title", "head"]
+        }
+    }
+}
+
+GITHUB_LIST_BRANCHES_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "github_list_branches",
+        "description": "List all branches in a GitHub repository.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository in format 'owner/repo'"
+                }
+            },
+            "required": ["repo"]
+        }
+    }
+}
+
+GITHUB_UPDATE_FILE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "github_update_file",
+        "description": "Update a file in a GitHub repository (creates a commit).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository in format 'owner/repo'"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file in the repository"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "New content for the file"
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Commit message"
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "Branch to commit to (default: main)"
+                }
+            },
+            "required": ["repo", "path", "content", "message"]
+        }
+    }
+}
+
+GITHUB_LIST_PRS_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "github_list_prs",
+        "description": "List pull requests in a GitHub repository.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Repository in format 'owner/repo'"
+                },
+                "state": {
+                    "type": "string",
+                    "enum": ["open", "closed", "all"],
+                    "description": "State of PRs to list (default: open)"
+                }
+            },
+            "required": ["repo"]
+        }
+    }
+}
+
+
+# =============================================================================
 # AGGREGATE SCHEMA LIST
 # =============================================================================
 # This list is passed to the LLM for function calling.
@@ -266,10 +584,29 @@ TOOLS_SCHEMA: List[Dict[str, Any]] = [
     TOGGLE_TASK_SCHEMA,
     DELETE_TASK_SCHEMA,
     
+    # Task assignment
+    ASSIGN_TASK_SCHEMA,
+    UNASSIGN_TASK_SCHEMA,
+    GET_USER_TASKS_SCHEMA,
+    
     # Idea management
     ADD_IDEA_SCHEMA,
     GET_IDEAS_SCHEMA,
     DELETE_IDEA_SCHEMA,
+    
+    # Notes
+    ADD_PROJECT_NOTE_SCHEMA,
+    GET_PROJECT_NOTES_SCHEMA,
+    ADD_TASK_NOTE_SCHEMA,
+    GET_TASK_NOTES_SCHEMA,
+    
+    # GitHub integration
+    GITHUB_LIST_FILES_SCHEMA,
+    GITHUB_READ_FILE_SCHEMA,
+    GITHUB_CREATE_PR_SCHEMA,
+    GITHUB_LIST_BRANCHES_SCHEMA,
+    GITHUB_UPDATE_FILE_SCHEMA,
+    GITHUB_LIST_PRS_SCHEMA,
 ]
 
 

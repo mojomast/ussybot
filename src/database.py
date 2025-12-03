@@ -43,6 +43,7 @@ class Database:
                     label TEXT NOT NULL,
                     is_done INTEGER DEFAULT 0,
                     created_by INTEGER,
+                    assigned_to INTEGER,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (project_id) REFERENCES projects(id)
                 )
@@ -97,6 +98,30 @@ class Database:
                     role TEXT NOT NULL,
                     content TEXT NOT NULL,
                     created_at TEXT NOT NULL
+                )
+            """)
+            
+            # Project notes table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS project_notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER NOT NULL,
+                    author_id INTEGER NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id)
+                )
+            """)
+            
+            # Task notes table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS task_notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id INTEGER NOT NULL,
+                    author_id INTEGER NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (task_id) REFERENCES tasks(id)
                 )
             """)
             
@@ -194,13 +219,13 @@ class Database:
     
     # ============ TASK METHODS ============
     
-    async def create_task(self, project_id: int, label: str, created_by: int = None) -> int:
+    async def create_task(self, project_id: int, label: str, created_by: int = None, assigned_to: int = None) -> int:
         """Create a new task"""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute("""
-                INSERT INTO tasks (project_id, label, created_by, created_at)
-                VALUES (?, ?, ?, ?)
-            """, (project_id, label, created_by, datetime.utcnow().isoformat()))
+                INSERT INTO tasks (project_id, label, created_by, assigned_to, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (project_id, label, created_by, assigned_to, datetime.utcnow().isoformat()))
             await db.commit()
             return cursor.lastrowid
     
@@ -239,6 +264,47 @@ class Database:
             await db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
             await db.commit()
             return True
+    
+    async def assign_task(self, task_id: int, user_id: int) -> bool:
+        """Assign a task to a user"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE tasks SET assigned_to = ? WHERE id = ?",
+                (user_id, task_id)
+            )
+            await db.commit()
+            return True
+    
+    async def unassign_task(self, task_id: int) -> bool:
+        """Unassign a task from any user"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE tasks SET assigned_to = NULL WHERE id = ?",
+                (task_id,)
+            )
+            await db.commit()
+            return True
+    
+    async def get_user_tasks(self, guild_id: int, user_id: int, include_done: bool = False) -> List[Dict[str, Any]]:
+        """Get all tasks assigned to a user in a guild"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            if include_done:
+                cursor = await db.execute("""
+                    SELECT tasks.* FROM tasks
+                    JOIN projects ON tasks.project_id = projects.id
+                    WHERE projects.guild_id = ? AND tasks.assigned_to = ?
+                    ORDER BY tasks.created_at DESC
+                """, (guild_id, user_id))
+            else:
+                cursor = await db.execute("""
+                    SELECT tasks.* FROM tasks
+                    JOIN projects ON tasks.project_id = projects.id
+                    WHERE projects.guild_id = ? AND tasks.assigned_to = ? AND tasks.is_done = 0
+                    ORDER BY tasks.created_at DESC
+                """, (guild_id, user_id))
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
     
     # ============ IDEA METHODS ============
     
@@ -475,3 +541,61 @@ class Database:
             cursor = await db.execute(query, tuple(params))
             await db.commit()
             return cursor.rowcount
+    
+    # ============ NOTES METHODS ============
+    
+    async def add_project_note(self, project_id: int, author_id: int, content: str) -> int:
+        """Add a note to a project"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("""
+                INSERT INTO project_notes (project_id, author_id, content, created_at)
+                VALUES (?, ?, ?, ?)
+            """, (project_id, author_id, content, datetime.utcnow().isoformat()))
+            await db.commit()
+            return cursor.lastrowid
+    
+    async def get_project_notes(self, project_id: int) -> List[Dict[str, Any]]:
+        """Get all notes for a project"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM project_notes WHERE project_id = ? ORDER BY created_at DESC",
+                (project_id,)
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+    
+    async def delete_project_note(self, note_id: int) -> bool:
+        """Delete a project note"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM project_notes WHERE id = ?", (note_id,))
+            await db.commit()
+            return True
+    
+    async def add_task_note(self, task_id: int, author_id: int, content: str) -> int:
+        """Add a note to a task"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("""
+                INSERT INTO task_notes (task_id, author_id, content, created_at)
+                VALUES (?, ?, ?, ?)
+            """, (task_id, author_id, content, datetime.utcnow().isoformat()))
+            await db.commit()
+            return cursor.lastrowid
+    
+    async def get_task_notes(self, task_id: int) -> List[Dict[str, Any]]:
+        """Get all notes for a task"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM task_notes WHERE task_id = ? ORDER BY created_at DESC",
+                (task_id,)
+            )
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+    
+    async def delete_task_note(self, note_id: int) -> bool:
+        """Delete a task note"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM task_notes WHERE id = ?", (note_id,))
+            await db.commit()
+            return True

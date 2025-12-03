@@ -22,16 +22,41 @@ BRRR Bot is a Discord bot that goes **BRRRRRRRR** — fast, efficient, and high-
 | Feature | Description |
 |---------|-------------|
 | 📋 **Project Management** | Create, track, and archive projects with task checklists |
+| 👥 **Task Assignment** | Assign tasks to specific users and track who's working on what |
+| 📝 **Notes System** | Add notes to projects and tasks for tracking progress and decisions |
 | 💡 **Idea Pool** | Capture ideas quickly and turn them into projects when ready |
 | 📅 **Weekly Rhythm** | Start weeks, run retros, track progress over time |
 | 🧠 **Memory System** | The bot remembers things about you across conversations |
 | 🤖 **AI Chat** | Conversational AI powered by LLM (GPT-5, GPT-4o, etc.) |
 | 🎭 **Persona System** | Customize how the bot responds to you |
+| 🐙 **GitHub Integration** | List files, read code, create PRs, and update documentation |
 | 🔄 **Bot-to-Bot** | Unlike most bots, BRRR responds to other bots too! |
 
 ---
 
-## Refactor & Improvements (Dec 3, 2025) ✅
+## New Features (Dec 3, 2025) 🎉
+
+### Task Assignment & Collaboration
+- **Assign tasks to users**: Keep track of who's responsible for what
+- **View user tasks**: See all tasks assigned to you or anyone else
+- **Unassign tasks**: Remove task assignments when plans change
+
+### Notes System
+- **Project notes**: Document decisions, updates, and important information
+- **Task notes**: Track progress, blockers, and context for specific tasks
+- **Persistent history**: All notes are saved with timestamps and authors
+
+### GitHub Integration
+- **List files**: Browse repository contents directly from Discord
+- **Read files**: View code and documentation without leaving Discord
+- **Create PRs**: Generate pull requests with the bot's help
+- **Update files**: Edit documentation and code via the bot
+- **Branch management**: List branches and manage your GitHub workflow
+- **PR tracking**: View open, closed, or all pull requests
+
+---
+
+## Previous Updates (Dec 3, 2025) ✅
 
 This release consolidates the bot's system prompts and tool schemas into centralized files and adds several enhancements to tool handling and management, improving maintainability and user experience.
 
@@ -130,8 +155,64 @@ The LLM can use these tools to interact with your data:
 | `get_projects` | List projects (filter by status) |
 | `create_project` | Create a new project |
 | `create_task` | Add a task to a project checklist |
+| `assign_task` | Assign a task to a specific user |
+| `get_user_tasks` | Get all tasks assigned to a user |
+| `add_project_note` | Add a note to a project |
+| `add_task_note` | Add a note to a task |
 | `add_idea` | Save an idea to the idea pool |
 | `get_ideas` | List saved ideas |
+| `github_list_files` | List files in a GitHub repository |
+| `github_read_file` | Read a file from GitHub |
+| `github_create_pr` | Create a pull request |
+| `github_update_file` | Update/create a file in GitHub |
+
+### Usage Examples
+
+#### Task Assignment
+```
+You: @brrr assign task 5 to @alice
+Bot: Task 'Implement authentication' has been assigned to user @alice.
+
+You: @brrr what tasks are assigned to me?
+Bot: **Tasks assigned to @you:**
+     ⬜ [5] Implement authentication (Project: 2)
+     ⬜ [7] Write unit tests (Project: 2)
+     2 open task(s)
+```
+
+#### Notes
+```
+You: @brrr add a note to project 3: We decided to use React instead of Vue
+Bot: Note added to project 'My Web App' (Note ID: 1)
+
+You: @brrr show me notes for task 7
+Bot: **Notes for task 'Write unit tests':**
+     [1] By @alice at 2025-12-03T10:30:00
+       Need to focus on edge cases for auth flow
+```
+
+#### GitHub Integration
+```
+You: @brrr list files in owner/repo at src/
+Bot: **Files in owner/repo/src/:**
+     📁 src/components
+     📁 src/utils
+     📄 src/index.js
+     📄 src/App.js
+
+You: @brrr read the README from owner/repo
+Bot: **File: owner/repo/README.md**
+     ```
+     # My Project
+     This is a sample project...
+     ```
+
+You: @brrr create a PR in owner/repo from feature-branch to main titled "Add new feature"
+Bot: Pull request created successfully!
+     Title: Add new feature
+     Number: #42
+     URL: https://github.com/owner/repo/pull/42
+```
 
 ### Memory System
 
@@ -173,6 +254,8 @@ REQUESTY_API_KEY=your_requesty_api_key
 Optional:
 ```env
 LLM_MODEL=openai/gpt-5-mini    # Default model
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxx  # For GitHub integration features
+```
 DATABASE_PATH=data/brrr.db      # Database location
 ```
 
