@@ -15,26 +15,79 @@ logger = logging.getLogger('brrr.weekly')
 class StartProjectButton(discord.ui.Button):
     """Button to quickly start a new project from week overview"""
     
-    def __init__(self):
+    def __init__(self, bot):
         super().__init__(
             label="Start New Project",
             style=discord.ButtonStyle.success,
             emoji="🚀"
         )
+        self.bot = bot
     
     async def callback(self, interaction: discord.Interaction):
         # Import here to avoid circular imports
         from src.cogs.projects import ProjectModal
         modal = ProjectModal()
         await interaction.response.send_modal(modal)
+        
+        # Wait for modal submission
+        try:
+            await modal.wait()
+        except:
+            return
+        
+        if not hasattr(modal, 'result'):
+            return
+        
+        data = modal.result
+        
+        # Create the project
+        project_id = await self.bot.db.create_project(
+            guild_id=interaction.guild.id,
+            title=data['title'],
+            description=data['description'],
+            owners=[interaction.user.id],
+            tags=data['tags']
+        )
+        
+        # Create thread for the project if in a text channel
+        thread = None
+        if interaction.channel.type == discord.ChannelType.text:
+            try:
+                thread = await interaction.channel.create_thread(
+                    name=f"🚀 {data['title']}",
+                    type=discord.ChannelType.public_thread
+                )
+                await self.bot.db.update_project(project_id, thread_id=thread.id)
+            except discord.Forbidden:
+                pass  # No permission to create threads
+        
+        # Build the project embed
+        embed = discord.Embed(
+            title=f"🚀 Project Started: {data['title']}",
+            description=data['description'] or "No description provided",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="ID", value=str(project_id), inline=True)
+        embed.add_field(name="Owner", value=interaction.user.mention, inline=True)
+        embed.add_field(name="Status", value="🟢 Active", inline=True)
+        
+        if data['tags']:
+            embed.add_field(name="Tags", value=", ".join(f"`{t}`" for t in data['tags']), inline=False)
+        
+        if thread:
+            embed.add_field(name="Thread", value=thread.mention, inline=False)
+        
+        embed.set_footer(text="Use /project checklist to add tasks!")
+        
+        await interaction.followup.send(embed=embed)
 
 
 class WeekView(discord.ui.View):
     """View for weekly overview with action buttons"""
     
-    def __init__(self):
+    def __init__(self, bot):
         super().__init__(timeout=None)
-        self.add_item(StartProjectButton())
+        self.add_item(StartProjectButton(bot))
 
 
 class Weekly(commands.Cog):
@@ -47,7 +100,11 @@ class Weekly(commands.Cog):
     def db(self):
         return self.bot.db
     
-    week_group = app_commands.Group(name="week", description="Weekly rhythm commands")
+    week_group = app_commands.Group(
+        name="week",
+        description="Weekly rhythm commands",
+        guild_only=True
+    )
     
     @week_group.command(name="start", description="Start a new week with an overview")
     async def week_start(self, interaction: discord.Interaction):
@@ -130,7 +187,7 @@ class Weekly(commands.Cog):
         embed.set_footer(text="Click the button below to start a new project!")
         
         # Send with the start project button
-        view = WeekView()
+        view = WeekView(self.bot)
         await interaction.response.send_message(embed=embed, view=view)
     
     @week_group.command(name="retro", description="Run retrospective for active projects")

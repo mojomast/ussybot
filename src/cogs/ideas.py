@@ -133,7 +133,11 @@ class Ideas(commands.Cog):
     def db(self):
         return self.bot.db
     
-    idea_group = app_commands.Group(name="idea", description="Idea pool commands")
+    idea_group = app_commands.Group(
+        name="idea",
+        description="Idea pool commands",
+        guild_only=True
+    )
     
     @idea_group.command(name="add", description="Add a new idea to the pool")
     async def idea_add(self, interaction: discord.Interaction):
@@ -295,10 +299,9 @@ class Ideas(commands.Cog):
     async def idea_delete(self, interaction: discord.Interaction, idea_id: int):
         """Delete an idea from the pool"""
         
-        ideas = await self.db.get_guild_ideas(interaction.guild.id)
-        idea = next((i for i in ideas if i['id'] == idea_id), None)
+        idea = await self.db.get_idea(idea_id)
         
-        if not idea:
+        if not idea or idea['guild_id'] != interaction.guild.id:
             await interaction.response.send_message("Idea not found!", ephemeral=True)
             return
         
@@ -310,12 +313,7 @@ class Ideas(commands.Cog):
             )
             return
         
-        # Delete from database
-        async with self.db.__class__(self.db.db_path) as db:
-            import aiosqlite
-            async with aiosqlite.connect(self.db.db_path) as conn:
-                await conn.execute("DELETE FROM ideas WHERE id = ?", (idea_id,))
-                await conn.commit()
+        await self.db.delete_idea(idea_id)
         
         await interaction.response.send_message(
             f"🗑️ Deleted idea: **{idea['title']}**",

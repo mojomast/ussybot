@@ -215,6 +215,14 @@ class Database:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
     
+    async def get_task(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single task by ID"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+    
     async def toggle_task(self, task_id: int) -> bool:
         """Toggle task completion status"""
         async with aiosqlite.connect(self.db_path) as db:
@@ -275,6 +283,23 @@ class Database:
             )
             await db.commit()
             return True
+    
+    async def delete_idea(self, idea_id: int) -> bool:
+        """Delete an idea from the pool"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM ideas WHERE id = ?", (idea_id,))
+            await db.commit()
+            return True
+    
+    async def get_idea(self, idea_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single idea by ID"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM ideas WHERE id = ?", (idea_id,))
+            row = await cursor.fetchone()
+            if row:
+                return {**dict(row), 'tags': json.loads(row['tags'])}
+            return None
     
     # ============ GUILD CONFIG METHODS ============
     
@@ -419,5 +444,34 @@ class Database:
                 "DELETE FROM conversation_history WHERE created_at < ?",
                 (cutoff,)
             )
+            await db.commit()
+            return cursor.rowcount
+
+    async def clear_conversation_history(self, user_id: int = None, guild_id: int = None, 
+                                         channel_id: int = None) -> int:
+        """Clear conversation history with optional filters.
+        
+        If no filters provided, clears ALL conversation history.
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            conditions = []
+            params = []
+            
+            if user_id is not None:
+                conditions.append("user_id = ?")
+                params.append(user_id)
+            if guild_id is not None:
+                conditions.append("guild_id = ?")
+                params.append(guild_id)
+            if channel_id is not None:
+                conditions.append("channel_id = ?")
+                params.append(channel_id)
+            
+            if conditions:
+                query = f"DELETE FROM conversation_history WHERE {' AND '.join(conditions)}"
+            else:
+                query = "DELETE FROM conversation_history"
+            
+            cursor = await db.execute(query, tuple(params))
             await db.commit()
             return cursor.rowcount

@@ -138,7 +138,11 @@ class Projects(commands.Cog):
     def db(self):
         return self.bot.db
     
-    project_group = app_commands.Group(name="project", description="Project management commands")
+    project_group = app_commands.Group(
+        name="project",
+        description="Project management commands",
+        guild_only=True
+    )
     
     @project_group.command(name="start", description="Start a new project")
     async def project_start(self, interaction: discord.Interaction):
@@ -169,11 +173,16 @@ class Projects(commands.Cog):
         # Create thread for the project
         thread = None
         if interaction.channel.type == discord.ChannelType.text:
-            thread = await interaction.channel.create_thread(
-                name=f"🚀 {data['title']}",
-                type=discord.ChannelType.public_thread
-            )
-            await self.db.update_project(project_id, thread_id=thread.id)
+            try:
+                thread = await interaction.channel.create_thread(
+                    name=f"🚀 {data['title']}",
+                    type=discord.ChannelType.public_thread
+                )
+                await self.db.update_project(project_id, thread_id=thread.id)
+            except discord.Forbidden:
+                logger.warning(f"No permission to create thread for project {project_id}")
+            except discord.HTTPException as e:
+                logger.error(f"Failed to create thread for project {project_id}: {e}")
         
         # Build the project embed
         embed = discord.Embed(
@@ -434,8 +443,46 @@ class Projects(commands.Cog):
     @app_commands.describe(task_id="Task ID to toggle")
     async def checklist_toggle(self, interaction: discord.Interaction, task_id: int):
         """Toggle a specific task"""
+        task = await self.db.get_task(task_id)
+        
+        if not task:
+            await interaction.response.send_message("Task not found!", ephemeral=True)
+            return
+        
+        # Verify task belongs to a project in this guild
+        project = await self.db.get_project(task['project_id'])
+        if not project or project['guild_id'] != interaction.guild.id:
+            await interaction.response.send_message("Task not found!", ephemeral=True)
+            return
+        
         await self.db.toggle_task(task_id)
-        await interaction.response.send_message(f"✅ Toggled task {task_id}!", ephemeral=True)
+        status = "completed" if not task['is_done'] else "incomplete"
+        await interaction.response.send_message(
+            f"✅ Marked task as {status}: **{task['label']}**",
+            ephemeral=True
+        )
+    
+    @checklist_group.command(name="remove", description="Remove a task from a project")
+    @app_commands.describe(task_id="Task ID to remove")
+    async def checklist_remove(self, interaction: discord.Interaction, task_id: int):
+        """Remove a task from a project"""
+        task = await self.db.get_task(task_id)
+        
+        if not task:
+            await interaction.response.send_message("Task not found!", ephemeral=True)
+            return
+        
+        # Verify task belongs to a project in this guild
+        project = await self.db.get_project(task['project_id'])
+        if not project or project['guild_id'] != interaction.guild.id:
+            await interaction.response.send_message("Task not found!", ephemeral=True)
+            return
+        
+        await self.db.delete_task(task_id)
+        await interaction.response.send_message(
+            f"🗑️ Removed task: **{task['label']}**",
+            ephemeral=True
+        )
 
 
 async def setup(bot):

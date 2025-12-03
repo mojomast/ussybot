@@ -8,28 +8,62 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 import asyncio
+from collections import defaultdict
+from datetime import datetime, timezone
 import logging
+from logging.handlers import RotatingFileHandler
 
-# Set up logging
+# Ensure logs directory exists
+os.makedirs('logs', exist_ok=True)
+
+# Generate log filename with timestamp
+log_filename = f"logs/brrr_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+# Set up logging with both file and console handlers
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        # File handler - stores all logs including DEBUG
+        logging.FileHandler(log_filename, encoding='utf-8'),
+        # Console handler - shows INFO and above
+        logging.StreamHandler()
+    ]
 )
+
+# Set console handler to INFO level (less noisy)
+logging.getLogger().handlers[1].setLevel(logging.INFO)
+
+# Reduce noise from third-party libraries
+logging.getLogger('aiosqlite').setLevel(logging.WARNING)
+logging.getLogger('discord').setLevel(logging.INFO)
+
 logger = logging.getLogger('brrr')
+logger.info(f"Logging to file: {log_filename}")
 
 # Load environment variables
 load_dotenv()
 
 TOKEN = os.getenv('DISCORD_TOKEN')
 REQUESTY_API_KEY = os.getenv('REQUESTY_API_KEY')
-LLM_MODEL = os.getenv('LLM_MODEL', 'openai/gpt-4o-mini')
 DATABASE_PATH = os.getenv('DATABASE_PATH', 'data/brrr.db')
+
+# =============================================================================
+# MODEL CONFIGURATION
+# Hardcoded for testing. To make configurable later:
+# - Add per-user model selection in database
+# - Add /model command to switch models
+# - Or use: LLM_MODEL = os.getenv('LLM_MODEL', 'openai/gpt-5-nano')
+# =============================================================================
+LLM_MODEL = os.getenv('LLM_MODEL', 'openai/gpt-5-nano')  # Default to gpt-5-nano
 
 if not TOKEN:
     raise ValueError("DISCORD_TOKEN not found in environment variables!")
 
 if not REQUESTY_API_KEY:
     logger.warning("REQUESTY_API_KEY not found - LLM features will be disabled")
+else:
+    logger.info(f"LLM configured: {LLM_MODEL} via Requesty")
 
 
 class BrrrBot(commands.Bot):
@@ -48,6 +82,10 @@ class BrrrBot(commands.Bot):
         
         self.db = None
         self.llm = None
+        # Per-channel locks to prevent concurrent message processing
+        self._channel_locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
+        # Track when bot is ready to ignore old messages (set in on_ready)
+        self._started_at = None
         
     async def setup_hook(self):
         """Called when the bot is starting up"""
@@ -76,6 +114,9 @@ class BrrrBot(commands.Bot):
     
     async def on_ready(self):
         """Called when the bot is fully ready"""
+        # Set the ready timestamp - ignore any messages from before this moment
+        self._started_at = datetime.now(timezone.utc)
+        
         logger.info(f'BRRR Bot is online! Logged in as {self.user}')
         logger.info(f'Connected to {len(self.guilds)} guild(s)')
         
@@ -96,6 +137,10 @@ class BrrrBot(commands.Bot):
         if message.author.id == self.user.id:
             return
         
+        # Ignore messages if bot isn't ready yet or if sent before bot started
+        if self._started_at is None or message.created_at < self._started_at:
+            return
+        
         # Process commands first (for prefix commands if any)
         await self.process_commands(message)
         
@@ -107,8 +152,11 @@ class BrrrBot(commands.Bot):
             message.reference.resolved.author.id == self.user.id
         )
         
+        # Check if bot name is in content (simple "chat without @ed")
+        name_in_content = "brrr" in message.content.lower()
+        
         # If mentioned or replied to, engage in conversation
-        if bot_mentioned or is_reply_to_bot:
+        if bot_mentioned or is_reply_to_bot or name_in_content:
             if self.llm is None:
                 await message.reply("brrrr... LLM not configured! Set REQUESTY_API_KEY to enable chat.", mention_author=False)
                 return
@@ -116,7 +164,9 @@ class BrrrBot(commands.Bot):
             # Get the chat cog to handle the conversation
             chat_cog = self.get_cog('Chat')
             if chat_cog:
-                await chat_cog.handle_mention(message)
+                # Use per-channel lock to prevent concurrent API calls
+                async with self._channel_locks[message.channel.id]:
+                    await chat_cog.handle_mention(message)
     
     async def close(self):
         """Cleanup on shutdown"""
@@ -179,6 +229,7 @@ async def help_command(interaction: discord.Interaction):
         name="📅 Weekly Commands",
         value="""
 `/week start` - Start a new week
+`/week summary` - Quick progress summary
 `/week retro` - Run project retrospective
         """,
         inline=False
@@ -187,9 +238,22 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="💡 Idea Commands",
         value="""
-`/idea add` - Add a new idea
-`/idea list` - Browse ideas
+`/idea add` - Add a new idea (with description)
+`/idea quick` - Quick add with just a title
+`/idea list` - Browse all ideas
 `/idea pick` - Pick an idea for a project
+`/idea random` - Get a random idea
+        """,
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🎭 Persona Commands",
+        value="""
+`/persona set` - Customize how I respond to you
+`/persona preset` - Quick style presets (concise, detailed, etc)
+`/persona show` - View your current settings
+`/persona clear` - Reset to default behavior
         """,
         inline=False
     )
