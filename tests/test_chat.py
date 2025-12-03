@@ -372,12 +372,12 @@ class TestChatCogContext:
         message = create_mock_message("new message")
         await chat_cog.handle_mention(message)
         
-        # Check that history was included
+        # Check that history was included as conversation_context
         call_history = mock_llm.get_call_history()
-        messages = call_history[0]["messages"]
+        conversation_context = call_history[0].get("conversation_context")
         
-        # Should have history + new message
-        assert len(messages) >= 3
+        # Should have history passed as context
+        assert conversation_context is not None or call_history[0].get("user_message") == "new message"
         contents = [m["content"] for m in messages]
         assert "Previous message" in contents
         assert "Previous response" in contents

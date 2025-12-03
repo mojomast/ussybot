@@ -136,9 +136,10 @@ class LLMClient:
         self,
         user_memories: Dict[str, Any],
         user_name: str,
-        custom_instructions: str = None
+        custom_instructions: str = None,
+        conversation_context: List[Dict[str, str]] = None
     ) -> str:
-        """Build the system prompt with user memories and custom instructions"""
+        """Build the system prompt with user memories, custom instructions, and conversation context"""
         
         memory_context = ""
         if user_memories:
@@ -161,6 +162,24 @@ class LLMClient:
 
 **User's Custom Instructions (IMPORTANT - follow these closely):**
 {custom_instructions}
+"""
+        
+        # Build recent conversation context section
+        context_section = ""
+        if conversation_context:
+            context_lines = []
+            for msg in conversation_context:
+                role = msg.get('role', 'unknown')
+                content = msg.get('content', '')
+                if role == 'user':
+                    context_lines.append(f"{user_name}: {content}")
+                elif role == 'assistant':
+                    context_lines.append(f"You (BRRR Bot): {content}")
+            if context_lines:
+                context_section = f"""
+
+**Recent conversation context (for reference only - respond to the NEW message below, not these):**
+{chr(10).join(context_lines)}
 """
         
         return f"""You are BRRR Bot, an energetic and helpful assistant for the BRRR Discord server focused on weekly coding projects.
@@ -212,31 +231,52 @@ You can remember things about users. When you learn something worth remembering 
 Memory keys should be descriptive like: current_project, skill_<language>, interest_<topic>, timezone, preferred_name, etc.
 Only save memories that would be useful for future interactions. Don't save trivial or temporary information.
 {memory_context}
-
+{context_section}
 **Current context:**
-You're chatting with {user_name}.
+You're chatting with {user_name}. Respond to their NEW message below.
 
 Remember: You're here to help make weekly projects go BRRRRR! 🚀"""
 
     async def chat(
         self,
-        messages: List[Dict[str, str]],
+        user_message: str,
         user_memories: Dict[str, Any] = None,
         user_name: str = "User",
         custom_instructions: str = None,
+        conversation_context: List[Dict[str, str]] = None,
         temperature: float = 0.7,
         max_tokens: int = 12000,
         tools: Optional[List[Dict]] = None
     ) -> LLMResponse:
-        """Send a chat completion request"""
+        """Send a chat completion request.
         
-        system_prompt = self._build_system_prompt(user_memories or {}, user_name, custom_instructions)
+        Args:
+            user_message: The current message from the user (the one to respond to)
+            user_memories: Dict of user's stored memories
+            user_name: Display name of the user
+            custom_instructions: Custom persona instructions
+            conversation_context: List of recent messages for context (included in system prompt)
+            temperature: LLM temperature
+            max_tokens: Max tokens for response
+            tools: List of tool schemas for function calling
+        """
         
-        full_messages = [{"role": "system", "content": system_prompt}] + messages
+        system_prompt = self._build_system_prompt(
+            user_memories or {}, 
+            user_name, 
+            custom_instructions,
+            conversation_context
+        )
+        
+        # Only send system prompt + current user message
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ]
         
         payload = {
             "model": self.model,
-            "messages": full_messages,
+            "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens
         }
@@ -346,6 +386,113 @@ Remember: You're here to help make weekly projects go BRRRRR! 🚀"""
             memories_to_save=memories_to_save,
             usage=usage,
             tool_calls=tool_calls
+        )
+    
+    async def chat_with_tool_results(
+        self,
+        user_message: str,
+        assistant_tool_calls: List[Dict],
+        tool_results: List[Dict],
+        user_memories: Dict[str, Any] = None,
+        user_name: str = "User",
+        custom_instructions: str = None,
+        conversation_context: List[Dict[str, str]] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 12000,
+        tools: Optional[List[Dict]] = None
+    ) -> LLMResponse:
+        """Send a follow-up chat request after tool execution.
+        
+        This is used when the initial chat() call returned tool_calls.
+        We need to send the full conversation including tool results.
+        
+        Args:
+            user_message: The original user message
+            assistant_tool_calls: The tool_calls from the assistant's response
+            tool_results: List of {tool_call_id, name, result} dicts
+            user_memories: Dict of user's stored memories
+            user_name: Display name of the user
+            custom_instructions: Custom persona instructions
+            conversation_context: List of recent messages for context
+            temperature: LLM temperature
+            max_tokens: Max tokens for response
+            tools: List of tool schemas
+        """
+        
+        system_prompt = self._build_system_prompt(
+            user_memories or {}, 
+            user_name, 
+            custom_instructions,
+            conversation_context
+        )
+        
+        # Build the full message sequence for tool calling
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+            {"role": "assistant", "content": "", "tool_calls": assistant_tool_calls}
+        ]
+        
+        # Add tool results
+        for tr in tool_results:
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tr["tool_call_id"],
+                "name": tr["name"],
+                "content": tr["result"]
+            })
+        
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+        
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
+        
+        data = await self._api_call(payload)
+        
+        # Extract response (same as chat method)
+        choices = data.get("choices") or [{}]
+        if not isinstance(choices, list):
+            choices = [choices]
+        first_choice = choices[0] or {}
+        message_data = first_choice.get("message", {})
+        content = message_data.get("content", "")
+        new_tool_calls = message_data.get("tool_calls")
+        
+        if content is None:
+            content = ""
+        usage = data.get("usage", {})
+        
+        # Extract memories from response
+        memories_to_save = []
+        clean_content = content or ""
+        
+        if "```json" in clean_content and '"memories"' in clean_content:
+            try:
+                json_start = clean_content.rfind("```json")
+                json_end = clean_content.rfind("```", json_start + 7)
+                if json_start != -1 and json_end != -1:
+                    json_str = clean_content[json_start + 7:json_end].strip()
+                    memory_data = json.loads(json_str)
+                    if "memories" in memory_data:
+                        memories_to_save = memory_data["memories"]
+                    clean_content = clean_content[:json_start].strip()
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                pass
+        
+        if not clean_content.strip():
+            clean_content = "brrr... I didn't quite get that. Try asking in another way?"
+        
+        return LLMResponse(
+            content=clean_content,
+            memories_to_save=memories_to_save,
+            usage=usage,
+            tool_calls=new_tool_calls
         )
     
     async def generate_project_plan(

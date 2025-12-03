@@ -127,31 +127,26 @@ class Chat(commands.Cog):
                 if is_bot:
                     content = f"[This message is from another bot named {user_name}] {content}"
                 
-                # Build messages for LLM
-                messages = history + [{"role": "user", "content": content}]
-                
                 # Initialize ToolExecutor
                 from src.tools import TOOLS_SCHEMA, ToolExecutor
                 import json
                 tool_executor = ToolExecutor(self.db)
                 
-                # First LLM call
+                # First LLM call - pass conversation history as context, current message as user_message
                 response = await self.llm.chat(
-                    messages=messages,
+                    user_message=content,
                     user_memories=memories,
                     user_name=user_name,
                     custom_instructions=custom_instructions,
+                    conversation_context=history if history else None,
                     tools=TOOLS_SCHEMA
                 )
                 
                 # Handle tool calls
                 if response.tool_calls:
-                    # Add assistant message with tool calls to history
-                    messages.append({
-                        "role": "assistant",
-                        "content": response.content or "",
-                        "tool_calls": response.tool_calls
-                    })
+                    # For tool calls, we need to do a follow-up with the tool results
+                    # Build the tool execution context
+                    tool_results = []
                     
                     for tool_call in response.tool_calls:
                         function_name = tool_call["function"]["name"]
@@ -167,20 +162,21 @@ class Chat(commands.Cog):
                             context={"guild_id": guild_id, "user_id": user_id}
                         )
                         
-                        # Add tool result to messages
-                        messages.append({
-                            "role": "tool",
+                        tool_results.append({
                             "tool_call_id": tool_call["id"],
                             "name": function_name,
-                            "content": tool_result
+                            "result": tool_result
                         })
                     
-                    # Second LLM call with tool results
-                    response = await self.llm.chat(
-                        messages=messages,
+                    # Second LLM call with tool results - use the raw API for this
+                    response = await self.llm.chat_with_tool_results(
+                        user_message=content,
+                        assistant_tool_calls=response.tool_calls,
+                        tool_results=tool_results,
                         user_memories=memories,
                         user_name=user_name,
                         custom_instructions=custom_instructions,
+                        conversation_context=history if history else None,
                         tools=TOOLS_SCHEMA
                     )
                 
@@ -387,7 +383,7 @@ class Chat(commands.Cog):
             user_name = interaction.user.display_name
             
             memories = await self.db.get_all_memories(user_id, guild_id)
-            history = await self.db.get_recent_messages(user_id, guild_id, channel_id, limit=10)
+            history = await self.db.get_recent_messages(user_id, guild_id, channel_id, limit=5)
             
             # Extract custom persona instructions if set
             custom_instructions = None
@@ -395,13 +391,12 @@ class Chat(commands.Cog):
                 persona_data = memories['persona_instructions']
                 custom_instructions = persona_data.get('value') if isinstance(persona_data, dict) else persona_data
             
-            messages = history + [{"role": "user", "content": message}]
-            
             response = await self.llm.chat(
-                messages=messages,
+                user_message=message,
                 user_memories=memories,
                 user_name=user_name,
-                custom_instructions=custom_instructions
+                custom_instructions=custom_instructions,
+                conversation_context=history if history else None
             )
             
             # Save conversation

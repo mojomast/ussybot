@@ -89,10 +89,11 @@ class MockLLMClient:
     
     async def chat(
         self,
-        messages: List[Dict[str, str]],
+        user_message: str,
         user_memories: Dict[str, Any] = None,
         user_name: str = "User",
         custom_instructions: str = None,
+        conversation_context: List[Dict[str, str]] = None,
         temperature: float = 0.7,
         max_tokens: int = 1000,
         tools: Optional[List[Dict]] = None
@@ -101,10 +102,54 @@ class MockLLMClient:
         
         # Record the call
         self._call_history.append({
-            "messages": messages,
+            "user_message": user_message,
             "user_memories": user_memories,
             "user_name": user_name,
             "custom_instructions": custom_instructions,
+            "conversation_context": conversation_context,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "tools": tools
+        })
+        
+        # Get response
+        if self._response_queue:
+            mock_resp = self._response_queue.pop(0)
+        else:
+            mock_resp = self._default_response
+        
+        return LLMResponse(
+            content=mock_resp.content,
+            memories_to_save=mock_resp.memories,
+            usage=mock_resp.usage,
+            tool_calls=mock_resp.tool_calls
+        )
+    
+    async def chat_with_tool_results(
+        self,
+        user_message: str,
+        assistant_tool_calls: List[Dict],
+        tool_results: List[Dict],
+        user_memories: Dict[str, Any] = None,
+        user_name: str = "User",
+        custom_instructions: str = None,
+        conversation_context: List[Dict[str, str]] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 12000,
+        tools: Optional[List[Dict]] = None
+    ) -> LLMResponse:
+        """Mock chat with tool results method"""
+        
+        # Record the call
+        self._call_history.append({
+            "method": "chat_with_tool_results",
+            "user_message": user_message,
+            "assistant_tool_calls": assistant_tool_calls,
+            "tool_results": tool_results,
+            "user_memories": user_memories,
+            "user_name": user_name,
+            "custom_instructions": custom_instructions,
+            "conversation_context": conversation_context,
             "temperature": temperature,
             "max_tokens": max_tokens,
             "tools": tools

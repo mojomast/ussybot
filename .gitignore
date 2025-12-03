@@ -12,4 +12,5 @@ data/*.db
 .idea/
 
 # Logs
+logs/
 *.log
